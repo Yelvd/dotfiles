@@ -1,134 +1,58 @@
 #!/usr/bin/env bash
 #
-# install.sh - symlink dotfiles from this repo into your home directory.
+# install.sh - link dotfiles into your home folder.
 #
-# Layout: every top-level folder is a "package" whose contents mirror $HOME.
-#
-#   dotfiles/
-#   ├── install.sh
-#   ├── zsh/.zshrc                    -> ~/.zshrc
-#   ├── tmux/.tmux.conf               -> ~/.tmux.conf
-#   ├── vim/.vimrc                    -> ~/.vimrc
-#   └── nvim/.config/nvim/init.lua    -> ~/.config/nvim/init.lua
+# Every top-level folder is a package that mirrors $HOME:
+#   nvim/.config/nvim     -> ~/.config/nvim     (whole folder)
+#   zsh/.zshrc            -> ~/.zshrc
+#   tmux/.tmux.conf       -> ~/.tmux.conf
 #
 # Usage:
-#   ./install.sh                 link every package
-#   ./install.sh zsh tmux        link only these packages
-#   ./install.sh -n              dry run: show what would happen
-#   ./install.sh -u [pkg...]     remove the symlinks this script created
+#   ./install.sh              link all packages
+#   ./install.sh nvim zsh     link only these packages
 #
-# Existing files that would be overwritten are moved to
-# ~/.dotfiles_backup/<timestamp>/ first, so nothing is lost.
+# Whatever is already at a target path is REPLACED (no backups).
 
 set -euo pipefail
+shopt -s dotglob nullglob
 
-DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${TARGET:-$HOME}"
-BACKUP_DIR="$HOME/.dotfiles_backup/$(date +%Y%m%d-%H%M%S)"
-DRY_RUN=0
-UNINSTALL=0
-BACKED_UP=0
+DOTFILES="$(cd "$(dirname "$0")" && pwd)"
 
-if [ -t 1 ]; then
-  GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BLUE=$'\e[34m'; RED=$'\e[31m'; RESET=$'\e[0m'
-else
-  GREEN=""; YELLOW=""; BLUE=""; RED=""; RESET=""
-fi
+# Shared folders: link the things inside them, never the folder itself.
+SHARED=" .config .local .local/share .local/bin .ssh"
 
-usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
-  exit "${1:-0}"
-}
+link() { # $1 = source in the repo, $2 = path relative to $HOME
+  local src="$1" rel="$2" dest="$HOME/$2"
 
-run() {
-  if [ "$DRY_RUN" -eq 1 ]; then
-    echo "  ${BLUE}[dry-run]${RESET} $*"
+  if [ -d "$src" ] && [[ "$SHARED" == *" $rel "* ]]; then
+    mkdir -p "$dest"
+    for child in "$src"/*; do
+      link "$child" "$rel/$(basename "$child")"
+    done
+  elif [ "$(readlink "$dest" || true)" = "$src" ]; then
+    echo "ok    ~/$rel"
   else
-    "$@"
+    rm -rf "$dest"
+    mkdir -p "$(dirname "$dest")"
+    ln -s "$src" "$dest"
+    echo "link  ~/$rel"
   fi
 }
 
-link_file() {
-  local src="$1" dest="$2" rel="$3"
-
-  # Already linked correctly
-  if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
-    echo "${GREEN}ok${RESET}      ~/$rel"
-    return
-  fi
-
-  # Something else is in the way: back it up
-  if [ -e "$dest" ] || [ -L "$dest" ]; then
-    echo "${YELLOW}backup${RESET}  ~/$rel -> $BACKUP_DIR/$rel"
-    run mkdir -p "$(dirname "$BACKUP_DIR/$rel")"
-    run mv "$dest" "$BACKUP_DIR/$rel"
-    BACKED_UP=1
-  fi
-
-  echo "${GREEN}link${RESET}    ~/$rel"
-  run mkdir -p "$(dirname "$dest")"
-  run ln -s "$src" "$dest"
-}
-
-unlink_file() {
-  local src="$1" dest="$2" rel="$3"
-  if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
-    echo "${RED}unlink${RESET}  ~/$rel"
-    run rm "$dest"
-  fi
-}
-
-process_package() {
-  local pkg="$1"
-  local pkg_dir="$DOTFILES_DIR/$pkg"
-
-  if [ ! -d "$pkg_dir" ]; then
-    echo "${RED}error${RESET}   no package named '$pkg'" >&2
-    return 1
-  fi
-
-  echo "${BLUE}==> $pkg${RESET}"
-  # Link individual files (not whole directories), so apps that write
-  # their own files into e.g. ~/.config/foo don't pollute the repo.
-  while IFS= read -r -d '' src; do
-    local rel="${src#"$pkg_dir"/}"
-    local dest="$TARGET/$rel"
-    if [ "$UNINSTALL" -eq 1 ]; then
-      unlink_file "$src" "$dest" "$rel"
-    else
-      link_file "$src" "$dest" "$rel"
-    fi
-  done < <(find "$pkg_dir" -name .git -prune -o \( -type f -o -type l \) -print0 | sort -z)
-}
-
-# --- argument parsing ---
-packages=()
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -n|--dry-run)   DRY_RUN=1 ;;
-    -u|--uninstall) UNINSTALL=1 ;;
-    -h|--help)      usage 0 ;;
-    -*)             echo "unknown option: $1" >&2; usage 1 ;;
-    *)              packages+=("${1%/}") ;;
-  esac
-  shift
-done
-
-# Default: every top-level directory (hidden dirs like .git are skipped,
-# as are folders starting with "_", e.g. _scripts or _docs).
+packages=("$@")
 if [ ${#packages[@]} -eq 0 ]; then
-  for d in "$DOTFILES_DIR"/*/; do
-    name="$(basename "$d")"
-    [[ "$name" == _* ]] && continue
+  for dir in "$DOTFILES"/*/; do
+    name="$(basename "$dir")"
+    [[ "$name" == .* || "$name" == _* ]] && continue # skip .git, _notes, ...
     packages+=("$name")
   done
 fi
 
 for pkg in "${packages[@]}"; do
-  process_package "$pkg"
+  pkg="${pkg%/}"
+  echo "==> $pkg"
+  for item in "$DOTFILES/$pkg"/*; do
+    case "$(basename "$item")" in .git | .gitignore | README*) continue ;; esac
+    link "$item" "$(basename "$item")"
+  done
 done
-
-if [ "$DRY_RUN" -eq 0 ] && [ "$BACKED_UP" -eq 1 ]; then
-  echo
-  echo "${YELLOW}Existing files were backed up to $BACKUP_DIR${RESET}"
-fi
