@@ -19,7 +19,7 @@ shopt -s dotglob nullglob
 DOTFILES="$(cd "$(dirname "$0")" && pwd)"
 
 # Shared folders: link the things inside them, never the folder itself.
-SHARED=" .config .local .local/share .local/bin .ssh"
+SHARED=" .config .local .local/share .local/bin .ssh "
 
 link() { # $1 = source in the repo, $2 = path relative to $HOME
   local src="$1" rel="$2" dest="$HOME/$2"
