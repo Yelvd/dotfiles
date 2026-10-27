@@ -5,3 +5,7 @@
 -- Disable format on save
 -- Undo LazyVim default: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/options.lua#L6
 vim.g.autoformat = false
+
+vim.g.python_recommended_style = 0
+
+vim.diagnostic.enable(false)
