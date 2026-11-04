@@ -1,0 +1,11 @@
+" Only hint search results on Google and DDG
+bindurl www.google.com f hint -Jc #search a
+bindurl www.google.com F hint -Jbc #search a
+
+" Not yet for duckduckgo
+bindurl ^https://duckduckgo.com f hint
+bindurl ^https://duckduckgo.com F hint -b
+
+
+" Comment toggler for Reddit, Hacker News and Lobste.rs
+bind ;c hint -c [class*="expand"],[class="togg"]
