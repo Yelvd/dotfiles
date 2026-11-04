@@ -13,7 +13,7 @@
 #
 # Whatever is already at a target path is REPLACED (no backups).
 
-ARGS="-n"
+ARGS="-v"
 
 PACKAGES=( "nvim" "zsh" "ranger" "ssh" "starship" "tmux" "tridactyl" )
 
